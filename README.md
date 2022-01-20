@@ -6,6 +6,7 @@ Feature
 ====
 * Getting encrypted recovery key from local filesystem and consul
 * Decrypt recovery key with AWS KMS service
+* Allow specify key share & threshold to split recovery key. (Default to recovery config stored in backend)
 
 Example
 =====
@@ -26,6 +27,8 @@ COMMANDS:
    help, h  Shows a list of commands or help for one command
 
 GLOBAL OPTIONS:
+   --recovery-shares value        Number of key shares to split the recovery key into (default: Automatically fetch from saved recovery config)
+   --recovery-threshold value     Number of key shares required to reconstruct the recovery key (default: Automatically fetch from saved recovery config)
    --backend value                storage backend name (file/consul) (default: file)
    --consul-address value         Specifies the address of the Consul agent to communicate with. (default: http://127.0.0.1:8500)
    --consul-path value            Specifies the path in Consul's key-value store where Vault data will be stored (Default: 'vault/') (default: vault/)

@@ -10,6 +10,7 @@ import (
 
 	"github.com/urfave/cli/v2"
 
+	"github.com/hashicorp/vault/shamir"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -21,7 +22,6 @@ func isBackendSupported(name string) bool {
 			return true
 		}
 	}
-
 	return false
 }
 
@@ -98,6 +98,12 @@ func do(c *cli.Context) error {
 	token := c.String("aws-session-token")
 	profile := c.String("aws-profile")
 	region := c.String("aws-region")
+	recoveryShares := c.Int("recovery-shares")
+	recoveryThreshold := c.Int("recovery-threshold")
+
+	if recoveryThreshold > recoveryShares {
+		log.Fatalf("Recovery threshold (%q) must be less than or equal to recovery shares (%q)", recoveryThreshold, recoveryShares)
+	}
 
 	kms, err := NewAWSKMS(&AWSConfig{
 		Region:          region,
@@ -115,7 +121,28 @@ func do(c *cli.Context) error {
 		return err
 	}
 
-	fmt.Println(base64.StdEncoding.EncodeToString(plain))
+	// Getting from reconvery config
+	if recoveryShares == 0 && recoveryThreshold == 0 {
+		conf, err := backend.RecoveryConfig()
+		if err != nil {
+			return err
+		}
+		recoveryShares = conf.SecretShares
+		recoveryThreshold = conf.SecretThreshold
+	}
+
+	if recoveryShares == 1 && recoveryThreshold == 1 {
+		fmt.Printf("Recovery Key: %s\n", base64.StdEncoding.EncodeToString(plain))
+		return nil
+	}
+
+	shared, err := shamir.Split(plain, recoveryShares, recoveryThreshold)
+	if err != nil {
+		return err
+	}
+	for i, key := range shared {
+		fmt.Printf("Recovery Key %d: %s\n", i+1, base64.StdEncoding.EncodeToString(key))
+	}
 	return nil
 }
 
@@ -123,6 +150,18 @@ func main() {
 	app := &cli.App{
 		Usage: "Misc for fun",
 		Flags: []cli.Flag{
+			&cli.IntFlag{
+				Name:        "recovery-shares",
+				Usage:       "Number of key shares to split the recovery key into",
+				Value:       0,
+				DefaultText: "Automatically fetch from saved recovery config",
+			},
+			&cli.IntFlag{
+				Name:        "recovery-threshold",
+				Usage:       "Number of key shares required to reconstruct the recovery key",
+				Value:       0,
+				DefaultText: "Automatically fetch from saved recovery config",
+			},
 			&cli.StringFlag{
 				Name:        "backend",
 				Usage:       "storage backend name (file/consul)",
